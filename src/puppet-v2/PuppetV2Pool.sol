@@ -49,13 +49,16 @@ contract PuppetV2Pool {
 
     function calculateDepositOfWETHRequired(uint256 tokenAmount) public view returns (uint256) {
         uint256 depositFactor = 3;
-        return _getOracleQuote(tokenAmount) * depositFactor / 1 ether;
+        return (_getOracleQuote(tokenAmount) * depositFactor) / 1 ether;
     }
 
     // Fetch the price from Uniswap v2 using the official libraries
     function _getOracleQuote(uint256 amount) private view returns (uint256) {
-        (uint256 reservesWETH, uint256 reservesToken) =
-            UniswapV2Library.getReserves({factory: _uniswapFactory, tokenA: address(_weth), tokenB: address(_token)});
+        (uint256 reservesWETH, uint256 reservesToken) = UniswapV2Library.getReserves({
+            factory: _uniswapFactory,
+            tokenA: address(_weth),
+            tokenB: address(_token)
+        });
 
         return UniswapV2Library.quote({amountA: amount * 10 ** 18, reserveA: reservesToken, reserveB: reservesWETH});
     }

