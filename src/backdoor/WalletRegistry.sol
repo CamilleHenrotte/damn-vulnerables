@@ -8,7 +8,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Safe} from "safe-smart-account/contracts/Safe.sol";
 import {SafeProxy} from "safe-smart-account/contracts/proxies/SafeProxy.sol";
 import {IProxyCreationCallback} from "safe-smart-account/contracts/proxies/IProxyCreationCallback.sol";
-
+import {console} from "forge-std/console.sol";
 /**
  * @notice A registry for Safe multisig wallets.
  *         When known beneficiaries deploy and register their wallets, the registry awards tokens to the wallet.
@@ -71,7 +71,6 @@ contract WalletRegistry is IProxyCreationCallback, Ownable {
         }
 
         address payable walletAddress = payable(proxy);
-
         // Ensure correct factory and copy
         if (msg.sender != walletFactory) {
             revert CallerNotFactory();
@@ -122,8 +121,10 @@ contract WalletRegistry is IProxyCreationCallback, Ownable {
     }
 
     function _getFallbackManager(address payable wallet) private view returns (address) {
-        return abi.decode(
-            Safe(wallet).getStorageAt(uint256(keccak256("fallback_manager.handler.address")), 0x20), (address)
-        );
+        return
+            abi.decode(
+                Safe(wallet).getStorageAt(uint256(keccak256("fallback_manager.handler.address")), 0x20),
+                (address)
+            );
     }
 }

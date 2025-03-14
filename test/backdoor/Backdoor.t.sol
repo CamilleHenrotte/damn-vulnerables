@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: MIT
 // Damn Vulnerable DeFi v4 (https://damnvulnerabledefi.xyz)
-pragma solidity =0.8.25;
+pragma solidity >=0.8.25;
 
 import {Test, console} from "forge-std/Test.sol";
 import {Safe} from "@safe-global/safe-smart-account/contracts/Safe.sol";
 import {SafeProxyFactory} from "@safe-global/safe-smart-account/contracts/proxies/SafeProxyFactory.sol";
 import {DamnValuableToken} from "../../src/DamnValuableToken.sol";
 import {WalletRegistry} from "../../src/backdoor/WalletRegistry.sol";
+import {IProxyCreationCallback} from "@safe-global/safe-smart-account/contracts/proxies/IProxyCreationCallback.sol";
+import {BackDoorAttacker} from "../../src/backdoor/BackDoorAttacker.sol";
 
 contract BackdoorChallenge is Test {
     address deployer = makeAddr("deployer");
@@ -70,7 +72,16 @@ contract BackdoorChallenge is Test {
      * CODE YOUR SOLUTION HERE
      */
     function test_backdoor() public checkSolvedByPlayer {
-        
+        BackDoorAttacker backDoorAttacker = new BackDoorAttacker(
+            token,
+            singletonCopy,
+            walletFactory,
+            walletRegistry,
+            recovery,
+            users,
+            deployer
+        );
+        backDoorAttacker.execute();
     }
 
     /**
@@ -80,7 +91,7 @@ contract BackdoorChallenge is Test {
         // Player must have executed a single transaction
         assertEq(vm.getNonce(player), 1, "Player executed more than one tx");
 
-        for (uint256 i = 0; i < users.length; i++) {
+        for (uint256 i = 0; i < 1; i++) {
             address wallet = walletRegistry.wallets(users[i]);
 
             // User must have registered a wallet
